@@ -1,14 +1,103 @@
-const fs = require("fs");
 const deepcopy = require("deepcopy");
 const _ = require('lodash');
 
 const coordinatesHelper = require('./coordinatesHelper');
+const vision = require('@google-cloud/vision');
+var client = new vision.v1.ImageAnnotatorClient({
+});
+
+var express    = require('express');        // call express
+var app        = express();                 // define our app using express
+var bodyParser = require('body-parser');
+
+var request = require('request').defaults({ encoding: null });
+var fs = require('fs');
+
+// configure app to use bodyParser()
+// this will let us get the data from a POST
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
+
+var port = process.env.PORT || 3000;        // set our port
+
+// ROUTES FOR OUR API
+// =============================================================================
+var router = express.Router();              // get an instance of the express Router
+
+var multer = require('multer');
+var storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, '/tmp')
+    },
+    filename: (req, file, cb) => {
+      cb(null, file.fieldname + '-' + Date.now())
+    }
+});
+var upload = multer({storage: storage});
+
+var download = function(uri, filename, callback){
+  request.head(uri, function(err, res, body){    
+    request(uri).pipe(fs.createWriteStream(filename)).on('close', callback);
+  });
+};
 
 
-const content = fs.readFileSync("./json/S01200HQT173.jpg.json");
-const textJson = JSON.parse(content);
-mergeNearByWords(textJson[0]['responses'][0]);
+router.get('/', function(req, res) {
+  res.render('index', { title: 'Image Menu to Text Menu Converter' });
+});
 
+// Image to text api
+router.post('/v1/convert', upload.single('image'), function(req, res) {
+    var path = '/tmp/';
+    if (!req.file) {
+	var url = req.body.url;
+	path = '/tmp/image'+Date.now();
+	download(url, path, function(){
+	client
+        .textDetection(path)
+        .then(results => {
+                const detections = results[0];
+                if(detections.textAnnotations.length > 0){
+                        res.json({ sucees: true, message: mergeNearByWords(detections)});
+                }
+                else {
+                        res.json({ success:true, message: []});
+                }
+		fs.unlinkSync(path);
+        })
+        .catch(err => {
+                console.error('ERROR:', err);
+                res.json({ success: flase, message: "Error occured!" });
+		fs.unlinkSync(path);
+        });	
+	});
+    }
+    else {
+	path = '/tmp/'+req.file.filename;
+	client
+    	.textDetection(path)
+    	.then(results => {
+       		const detections = results[0];
+        	if(detections.textAnnotations.length > 0){
+                	res.json({ sucees: true, message: mergeNearByWords(detections)});
+        	}
+        	else {
+                	res.json({ success:true, message: []});
+        	}
+		fs.unlinkSync(path);
+    	})
+    	.catch(err => {
+        	console.error('ERROR:', err);
+        	res.json({ success: flase, message: "Error occured!" });
+		fs.unlinkSync(path);
+    	});	
+    }
+});
+
+app.use('/', router);
+app.set('view engine', 'jade');
+app.listen(port);
+console.log('Magic happens on port ' + port);
 
 /**
  * GCP Vision groups several nearby words to appropriate lines
@@ -39,7 +128,8 @@ function mergeNearByWords(data) {
 
     // This does the line segmentation based on the bounding boxes
     let finalArray = constructLineWithBoundingPolygon(mergedArray);
-    console.log(finalArray);
+    //console.log(finalArray);
+    return finalArray;
 }
 
 // TODO implement the line ordering for multiple words

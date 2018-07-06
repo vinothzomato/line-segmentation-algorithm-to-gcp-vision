@@ -1,0 +1,10 @@
+div
+  form(action='/v1/convert',method='post',enctype="multipart/form-data")
+    div(class="form-group")     
+     label(for="menu") Local Image
+     input(type="file", name="image", id="menu")
+    div(class="form-group")
+     label(for="url") Image Url
+     input(type="text", name="url", id="url")
+    div(data-role='fieldcontain')   
+      input(type='submit',value='Submit',data-transition='fade', data-theme='c')
